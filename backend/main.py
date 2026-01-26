@@ -7,7 +7,7 @@ import uvicorn
 import shutil
 import os
 import tempfile
-from contour_logic import ContourExtractor
+from backend.contour_logic import ContourExtractor
 import json
 
 app = FastAPI()
