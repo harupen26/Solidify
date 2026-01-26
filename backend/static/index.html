@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solidify</title>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary-color: #3b82f6;
+            /* Soft Modern Blue */
+            --bg-color: #0f0f0f;
+            --panel-bg: rgba(30, 30, 30, 0.85);
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-color: #333;
+            --font-main: 'Inter', sans-serif;
+        }
+
+        body {
+            margin: 0;
+            font-family: var(--font-main);
+            background: var(--bg-color);
+            color: var(--text-color);
+            overflow: hidden;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 24px;
+            left: 24px;
+            z-index: 100;
+            background: var(--panel-bg);
+            padding: 24px;
+            border-radius: 12px;
+            width: 320px;
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        h2 {
+            margin: 0 0 20px 0;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-color);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+            letter-spacing: -0.02em;
+        }
+
+        /* Drag & Drop */
+        #drop-zone {
+            border: 2px dashed var(--border-color);
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.02);
+            font-size: 0.9rem;
+        }
+
+        #drop-zone:hover,
+        #drop-zone.hover {
+            border-color: var(--primary-color);
+            color: var(--primary-color);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        /* Controls */
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        label span {
+            color: var(--text-color);
+        }
+
+        /* Range Slider */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            cursor: pointer;
+            margin-top: -6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #444;
+            border-radius: 2px;
+        }
+
+        /* Inputs & Buttons */
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #222;
+            color: var(--text-color);
+            font-family: inherit;
+            font-size: 0.9rem;
+            outline: none;
+            margin-bottom: 12px;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: inherit;
+        }
+
+        button.primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        button.primary:hover {
+            background: #2563eb;
+        }
+
+        button.secondary {
+            background: #333;
+            color: var(--text-color);
+        }
+
+        button.secondary:hover {
+            background: #444;
+        }
+
+        button:disabled {
+            background: #2a2a2a;
+            color: #555;
+            cursor: not-allowed;
+        }
+
+        /* Status */
+        .status-msg {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 12px;
+            min-height: 1.2em;
+        }
+
+        .error {
+            color: #ef4444;
+        }
+
+        /* Canvas & Legend */
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            background: #111;
+            /* Fallback */
+        }
+
+        #scale-legend {
+            position: absolute;
+            bottom: 24px;
+            right: 24px;
+            background: var(--panel-bg);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            border: 1px solid var(--border-color);
+            pointer-events: none;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        hr {
+            border: 0;
+            border-top: 1px solid var(--border-color);
+            margin: 24px 0;
+        }
+    </style>
+    <!-- Import Map -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+
+<body>
+    <div id="ui-container">
+        <h2>Solidify</h2>
+
+        <div id="drop-zone" onclick="document.getElementById('fileInput').click()">
+            <p><strong>Click to upload</strong> or drag and drop</p>
+            <p style="font-size: 0.8rem; margin-top:4px; color:#666;">PNG, JPG supported</p>
+        </div>
+        <input type="file" id="fileInput" accept="image/*">
+
+        <div class="control-group">
+            <label for="scale">Scale <span>x<span id="scale-val">1.0</span></span></label>
+            <input type="range" id="scale" min="0.1" max="5.0" step="0.1" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <label for="thickness">Thickness <span><span id="thickness-val">1.0</span> cm</span></label>
+            <input type="range" id="thickness" min="0.1" max="10.0" step="0.1" value="1.0">
+        </div>
+
+        <button id="processBtn" class="primary" onclick="processImage()">Generate 3D Model</button>
+        <div id="status" class="status-msg"></div>
+
+        <hr>
+
+        <div class="control-group">
+            <label>Export Format</label>
+            <select id="exportFormat">
+                <option value="stl">STL (Standard)</option>
+                <option value="obj">OBJ (Wavefront)</option>
+            </select>
+            <button id="downloadBtn" class="secondary" onclick="exportModel()" disabled>Download File</button>
+        </div>
+    </div>
+
+    <div id="scale-legend">Grid Unit: 10 cm</div>
+    <div id="canvas-container"></div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- Globals ---
+        let scene, camera, renderer, mesh, controls, gridHelper;
+        let contourPoints = [];
+        let loadedFile = null;
+
+        function init() {
+            const container = document.getElementById('canvas-container');
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111111); // Matte dark grey
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+            camera.position.set(200, 200, 200);
+            camera.lookAt(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            container.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.maxDistance = 5000;
+            controls.update();
+
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+            dirLight.position.set(50, 100, 50);
+            scene.add(dirLight);
+
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            fillLight.position.set(-50, 0, -50);
+            scene.add(fillLight);
+
+            updateAdaptiveGrid(200);
+
+            // Axes - slightly subtler
+            const axesHelper = new THREE.AxesHelper(50);
+            scene.add(axesHelper);
+
+            window.addEventListener('resize', onWindowResize);
+
+            setupUI();
+            animate();
+        }
+
+        // --- Adaptive Grid Logic ---
+        function updateAdaptiveGrid(maxDimension) {
+            if (gridHelper) scene.remove(gridHelper);
+
+            let gridSize, divisions, label;
+
+            if (maxDimension < 60) {
+                gridSize = 60;
+                divisions = 60; // 1cm
+                label = "1 cm";
+            } else if (maxDimension < 600) {
+                gridSize = 600;
+                divisions = 60; // 10cm
+                label = "10 cm";
+            } else {
+                gridSize = 6000;
+                divisions = 60; // 1m
+                label = "1 m";
+            }
+
+            // Clean grey grid
+            gridHelper = new THREE.GridHelper(gridSize, divisions, 0x444444, 0x222222);
+            scene.add(gridHelper);
+
+            const legend = document.getElementById('scale-legend');
+            legend.innerText = `Grid Unit: ${label}`;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function setupUI() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('fileInput');
+            const thicknessInput = document.getElementById('thickness');
+            const thicknessVal = document.getElementById('thickness-val');
+            const scaleInput = document.getElementById('scale');
+            const scaleVal = document.getElementById('scale-val');
+
+            const updateMesh = () => {
+                if (contourPoints.length > 0) generateMesh(contourPoints);
+            };
+
+            thicknessInput.addEventListener('input', (e) => {
+                thicknessVal.innerText = e.target.value;
+                updateMesh();
+            });
+
+            scaleInput.addEventListener('input', (e) => {
+                scaleVal.innerText = e.target.value;
+                updateMesh();
+            });
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('hover');
+            });
+            dropZone.addEventListener('dragleave', () => dropZone.classList.remove('hover'));
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('hover');
+                if (e.dataTransfer.files.length > 0) {
+                    handleFileSelect(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length > 0) {
+                    handleFileSelect(e.target.files[0]);
+                }
+            });
+        }
+
+        function handleFileSelect(file) {
+            loadedFile = file;
+            const dropZone = document.getElementById('drop-zone');
+            // Simplified success state
+            dropZone.innerHTML = `<p style="color:var(--text-color); font-weight:500;">${file.name}</p>`;
+            dropZone.style.borderColor = "var(--primary-color)";
+            dropZone.style.background = "rgba(59, 130, 246, 0.1)";
+        }
+
+        window.processImage = async () => {
+            const statusFn = document.getElementById('status');
+            const btn = document.getElementById('processBtn');
+
+            if (!loadedFile) {
+                statusFn.innerText = "Error: Please upload an image first.";
+                statusFn.classList.add('error');
+                return;
+            }
+
+            statusFn.innerText = "Processing...";
+            statusFn.classList.remove('error');
+            btn.disabled = true;
+
+            const formData = new FormData();
+            formData.append('file', loadedFile);
+
+            try {
+                const response = await fetch('/process-image', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error("Server Error");
+
+                const data = await response.json();
+
+                contourPoints = data.points;
+                generateMesh(contourPoints);
+
+                statusFn.innerText = ""; // Clear status on success
+
+                const dlBtn = document.getElementById('downloadBtn');
+                dlBtn.disabled = false;
+                // Highlight download button slightly
+                dlBtn.style.background = "#2563eb"; // Blue
+                dlBtn.style.color = "white";
+
+            } catch (err) {
+                console.error(err);
+                statusFn.innerText = "Error: " + err.message;
+                statusFn.classList.add('error');
+            } finally {
+                btn.disabled = false;
+            }
+        };
+
+        function generateMesh(points) {
+            if (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+            }
+
+            if (!points || points.length === 0) return;
+
+            const baseScale = 100.0;
+            const userScale = parseFloat(document.getElementById('scale').value);
+            const modelScale = baseScale * userScale;
+
+            const shape = new THREE.Shape();
+            shape.moveTo(points[0].x * modelScale, -points[0].y * modelScale);
+            for (let i = 1; i < points.length; i++) {
+                shape.lineTo(points[i].x * modelScale, -points[i].y * modelScale);
+            }
+            shape.closePath();
+
+            const thicknessCm = parseFloat(document.getElementById('thickness').value);
+
+            const extrudeSettings = {
+                steps: 1,
+                depth: thicknessCm,
+                bevelEnabled: false,
+            };
+
+            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+
+            geometry.computeBoundingBox();
+            const min = geometry.boundingBox.min;
+            const max = geometry.boundingBox.max;
+
+            const width = max.x - min.x;
+            const height = max.y - min.y;
+            const maxDim = Math.max(width, height);
+
+            updateAdaptiveGrid(maxDim);
+
+            // Center geometry
+            const center = new THREE.Vector3();
+            geometry.boundingBox.getCenter(center);
+            geometry.translate(-center.x, -center.y, -center.z);
+
+            // Material: Clean Matte Grey/White (Architectural look)
+            const material = new THREE.MeshStandardMaterial({
+                color: 0xeeeeee,
+                roughness: 0.7,
+                metalness: 0.1
+            });
+            mesh = new THREE.Mesh(geometry, material);
+
+            scene.add(mesh);
+        }
+
+        window.exportModel = () => {
+            if (!mesh) return;
+
+            const format = document.getElementById('exportFormat').value;
+            const content = (format === 'stl') ? generateSTL() : generateOBJ();
+            const fileName = `model.${format}`;
+
+            const blob = new Blob([content], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = fileName;
+            link.click();
+        };
+
+        function generateSTL() {
+            const geometry = mesh.geometry.toNonIndexed();
+            const positions = geometry.attributes.position.array;
+
+            let stl = "solid ExportedMesh\n";
+            const scale = 10.0;
+
+            const v1 = new THREE.Vector3();
+            const v2 = new THREE.Vector3();
+            const v3 = new THREE.Vector3();
+            const normal = new THREE.Vector3();
+            const edge1 = new THREE.Vector3();
+            const edge2 = new THREE.Vector3();
+
+            for (let i = 0; i < positions.length; i += 9) {
+                v1.set(positions[i], positions[i + 1], positions[i + 2]).multiplyScalar(scale);
+                v2.set(positions[i + 3], positions[i + 4], positions[i + 5]).multiplyScalar(scale);
+                v3.set(positions[i + 6], positions[i + 7], positions[i + 8]).multiplyScalar(scale);
+
+                edge1.subVectors(v2, v1);
+                edge2.subVectors(v3, v1);
+                normal.crossVectors(edge1, edge2).normalize();
+
+                stl += `  facet normal ${normal.x} ${normal.y} ${normal.z}\n`;
+                stl += `    outer loop\n`;
+                stl += `      vertex ${v1.x} ${v1.y} ${v1.z}\n`;
+                stl += `      vertex ${v2.x} ${v2.y} ${v2.z}\n`;
+                stl += `      vertex ${v3.x} ${v3.y} ${v3.z}\n`;
+                stl += `    endloop\n`;
+                stl += `  endfacet\n`;
+            }
+            stl += "endsolid ExportedMesh\n";
+            return stl;
+        }
+
+        function generateOBJ() {
+            const geometry = mesh.geometry;
+            const positions = geometry.attributes.position.array;
+            const scale = 10.0;
+
+            let obj = "# Exported 3D Model\n";
+
+            for (let i = 0; i < positions.length; i += 3) {
+                obj += `v ${positions[i] * scale} ${positions[i + 1] * scale} ${positions[i + 2] * scale}\n`;
+            }
+
+            if (geometry.index) {
+                const indices = geometry.index.array;
+                for (let i = 0; i < indices.length; i += 3) {
+                    obj += `f ${indices[i] + 1} ${indices[i + 1] + 1} ${indices[i + 2] + 1}\n`;
+                }
+            } else {
+                for (let i = 0; i < positions.length / 3; i += 3) {
+                    obj += `f ${i + 1} ${i + 2} ${i + 3}\n`;
+                }
+            }
+
+            return obj;
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
