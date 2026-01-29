@@ -46,10 +46,11 @@
         }
 
         #ui-container.minimized {
-            width: auto;
-            min-width: 200px;
-            padding: 16px 20px;
-            overflow: hidden;
+            /* Keep width consistent to avoid layout shift */
+            /* width: auto; */
+            /* min-width: 200px; */
+            padding-bottom: 0;
+            /* Adjust padding for visual balance */
         }
 
         /* Mobile adjustments */
@@ -162,6 +163,7 @@
         /* Range Slider */
         input[type=range] {
             -webkit-appearance: none;
+            appearance: none;
             width: 100%;
             background: transparent;
         }
@@ -278,6 +280,114 @@
             border-top: 1px solid var(--border-color);
             margin: 24px 0;
         }
+
+        /* Optimization Image View */
+        #optimization-container {
+            position: relative;
+            margin-bottom: 20px;
+            /* Hidden by default */
+            text-align: center;
+        }
+
+        #preview-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            border: 1px solid #444;
+            cursor: crosshair;
+        }
+
+        .marker-dot {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+        }
+
+        .marker-handle {
+            background: #ef4444;
+            border: 2px solid white;
+        }
+
+        .marker-optimal {
+            background: #e879f9;
+            border: 2px solid white;
+        }
+
+        .marker-com {
+            background: #22d3ee;
+            border: 2px solid white;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .step-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            letter-spacing: 0.05em;
+        }
+
+        .results-box {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+            font-size: 0.85rem;
+            text-align: left;
+        }
+
+        .results-box div {
+            margin-bottom: 4px;
+        }
+
+        .result-highlight {
+            color: #e879f9;
+            font-weight: bold;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 16px;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 4px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            flex: 1;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            padding: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .tab-btn.active {
+            background: var(--primary-color);
+            color: white;
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+        }
     </style>
     <!-- Import Map -->
     <script type="importmap">
@@ -295,46 +405,103 @@
         <div class="panel-header">
             <h2>Solidify</h2>
             <button class="toggle-btn" id="toggleBtn" title="Minimize/Expand">
+                <!-- Initial Icon: Minus (Minimize) -->
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="4 14 10 20 16 14"></polyline>
-                    <line x1="12" y1="4" x2="12" y2="20"></line>
-                    <line x1="4" y1="20" x2="20" y2="20"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
                 </svg>
             </button>
         </div>
 
         <div id="ui-content">
-            <div id="drop-zone" onclick="document.getElementById('fileInput').click()">
-                <p><strong>Click to upload</strong> or drag and drop</p>
-                <p style="font-size: 0.8rem; margin-top:4px; color:#666;">PNG, JPG supported</p>
-            </div>
-            <input type="file" id="fileInput" accept="image/*">
-
-            <div class="control-group">
-                <label for="scale">Scale <span>x<span id="scale-val">1.0</span></span></label>
-                <input type="range" id="scale" min="0.1" max="5.0" step="0.1" value="1.0">
+            <!-- Step 0: Upload -->
+            <div id="step-upload">
+                <div id="drop-zone" onclick="document.getElementById('fileInput').click()">
+                    <p><strong>Click to upload</strong> or drag and drop</p>
+                    <p style="font-size: 0.8rem; margin-top:4px; color:#666;">PNG, JPG supported</p>
+                </div>
+                <input type="file" id="fileInput" accept="image/*">
             </div>
 
-            <div class="control-group">
-                <label for="thickness">Thickness <span><span id="thickness-val">1.0</span> cm</span></label>
-                <input type="range" id="thickness" min="0.1" max="10.0" step="0.1" value="1.0">
+            <!-- Main App Container (Hidden until upload) -->
+            <div id="main-app" class="hidden">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab-btn active" id="tab-optimize"
+                        onclick="switchTab('optimize')">Optimization</button>
+                    <button class="tab-btn" id="tab-3d" onclick="switchTab('3d')">3D Model</button>
+                </div>
+
+                <!-- Step 1: Optimization -->
+                <div id="step-optimize">
+                    <!-- Mass Inputs -->
+                    <div style="display:flex; gap:12px; margin-bottom:12px;">
+                        <div style="flex:1;">
+                            <label style="font-size:0.75rem; margin-bottom:4px;">Object Mass (kg)</label>
+                            <input type="number" id="targetMass" value="0.8" step="0.1"
+                                style="width:100%; padding:6px; background:#222; border:1px solid #333; color:white; border-radius:4px;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:0.75rem; margin-bottom:4px;">Ball Mass (kg)</label>
+                            <input type="number" id="ballMass" value="0.2" step="0.05"
+                                style="width:100%; padding:6px; background:#222; border:1px solid #333; color:white; border-radius:4px;">
+                        </div>
+                    </div>
+
+                    <div id="optimization-container">
+                        <img id="preview-image" src="" alt="Preview">
+                        <!-- Markers will be injected here -->
+                    </div>
+
+                    <button id="calcBtn" class="primary" disabled onclick="runOptimization()">Calculate Optimal
+                        Position</button>
+
+                    <div id="opt-results" class="results-box hidden">
+                        <div>Max Spin: <span id="res-spin" class="result-highlight">0.0</span> turns</div>
+                        <hr style="border-color:#555; margin:8px 0;">
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px; font-size:0.75rem;">
+                            <div>Dist (d): <span id="res-dist">0.00</span> m</div>
+                            <div>Inertia (I): <span id="res-inertia">0.00</span></div>
+                            <div>Energy (E): <span id="res-energy">0.00</span> J</div>
+                            <div>Trans Ratio: <span id="res-ratio">0.00</span></div>
+                            <div>Velocity: <span id="res-vel">0.00</span> m/s</div>
+                            <div>Omega: <span id="res-omega">0.00</span> rad/s</div>
+                        </div>
+                    </div>
+
+                </div>
             </div>
 
-            <button id="processBtn" class="primary" onclick="processImage()">Generate 3D Model</button>
+            <!-- Step 2: 3D Control -->
+            <div id="step-3d" class="hidden">
+                <div class="control-group">
+                    <label for="scale">Scale <span>x<span id="scale-val">1.0</span></span></label>
+                    <input type="range" id="scale" min="0.1" max="5.0" step="0.1" value="1.0">
+                </div>
+
+                <div class="control-group">
+                    <label for="thickness">Thickness <span><span id="thickness-val">1.0</span> cm</span></label>
+                    <input type="range" id="thickness" min="0.1" max="10.0" step="0.1" value="1.0">
+                </div>
+
+                <button id="processBtn" class="primary" onclick="processImage()">Generate 3D Model</button>
+
+                <hr style="border-color:#333; margin:16px 0;">
+
+                <div class="control-group">
+                    <label>Export Format</label>
+                    <select id="exportFormat">
+                        <option value="stl">STL (Standard)</option>
+                        <option value="obj">OBJ (Wavefront)</option>
+                    </select>
+                    <button id="downloadBtn" class="secondary" onclick="exportModel()" disabled>Download File</button>
+                </div>
+
+                <button class="secondary" onclick="resetFlow()" style="margin-top:8px;">Start Over</button>
+            </div>
             <div id="status" class="status-msg"></div>
-
-            <hr>
-
-            <div class="control-group">
-                <label>Export Format</label>
-                <select id="exportFormat">
-                    <option value="stl">STL (Standard)</option>
-                    <option value="obj">OBJ (Wavefront)</option>
-                </select>
-                <button id="downloadBtn" class="secondary" onclick="exportModel()" disabled>Download File</button>
-            </div>
         </div>
+    </div>
     </div>
 
     <div id="scale-legend">Grid Unit: 10 cm</div>
@@ -345,9 +512,11 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         // --- Globals ---
-        let scene, camera, renderer, mesh, controls, gridHelper;
+        let scene, camera, renderer, mesh, controls, gridHelper, optimalMarker;
         let contourPoints = [];
         let loadedFile = null;
+        let handlePos = { x: 0.5, y: 0.5 }; // normalized
+        let optimalResult = null;
 
         function init() {
             const container = document.getElementById('canvas-container');
@@ -442,6 +611,25 @@
             const toggleBtn = document.getElementById('toggleBtn');
             const uiContainer = document.getElementById('ui-container');
 
+            // Optimization UI
+            const previewImg = document.getElementById('preview-image');
+
+            previewImg.addEventListener('click', (e) => {
+                const rect = previewImg.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Normalized coordinates
+                handlePos.x = x / rect.width;
+                handlePos.y = y / rect.height;
+
+                updateMarkers();
+
+                // Enable calculate
+                document.getElementById('calcBtn').disabled = false;
+                document.getElementById('calcBtn').innerText = "Calculate Optimal Position";
+            });
+
             // Toggle Minimize
             toggleBtn.addEventListener('click', () => {
                 uiContainer.classList.toggle('minimized');
@@ -486,13 +674,154 @@
             });
         }
 
+        function updateMarkers() {
+            const container = document.getElementById('optimization-container');
+            // Clear old markers
+            const old = container.querySelectorAll('.marker-dot');
+            old.forEach(el => el.remove());
+
+            // Handle Marker
+            const h = document.createElement('div');
+            h.className = 'marker-dot marker-handle';
+            h.style.left = (handlePos.x * 100) + '%';
+            h.style.top = (handlePos.y * 100) + '%';
+            container.appendChild(h);
+
+            // If result exists, show optimal point
+            if (optimalResult && optimalResult.optimized) {
+                const opt = optimalResult.optimized.ball_pos;
+                if (opt) {
+                    const o = document.createElement('div');
+                    o.className = 'marker-dot marker-optimal';
+                    o.style.left = (opt.x * 100) + '%';
+                    o.style.top = (opt.y * 100) + '%';
+                    container.appendChild(o);
+                }
+            }
+        }
+
+        window.switchTab = (tabName) => {
+            // Update Tab UI
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                if (b.id === `tab-${tabName}`) b.classList.add('active');
+            });
+
+            // Update Content
+            if (tabName === 'optimize') {
+                document.getElementById('step-optimize').classList.remove('hidden');
+                document.getElementById('step-3d').classList.add('hidden');
+            } else {
+                document.getElementById('step-optimize').classList.add('hidden');
+                document.getElementById('step-3d').classList.remove('hidden');
+            }
+        }
+
+        window.resetFlow = () => {
+            loadedFile = null;
+            contourPoints = [];
+            optimalResult = null;
+            document.getElementById('step-upload').classList.remove('hidden');
+            document.getElementById('main-app').classList.add('hidden');
+            document.getElementById('drop-zone').innerHTML = `<p><strong>Click to upload</strong> or drag and drop</p><p style="font-size: 0.8rem; margin-top:4px; color:#666;">PNG, JPG supported</p>`;
+            document.getElementById('status').innerText = "";
+            document.getElementById('calcBtn').disabled = true;
+            document.getElementById('opt-results').classList.add('hidden');
+
+            // Reset mass inputs to default? Optional.
+
+            if (mesh) {
+                scene.remove(mesh);
+                mesh.geometry.dispose();
+                mesh.material.dispose();
+                mesh = null;
+            }
+            if (optimalMarker) {
+                scene.remove(optimalMarker);
+                optimalMarker = null;
+            }
+        };
+
+        window.runOptimization = async () => {
+            const btn = document.getElementById('calcBtn');
+            const status = document.getElementById('status');
+
+            // Get Mass Inputs
+            const targetMass = document.getElementById('targetMass').value;
+            const ballMass = document.getElementById('ballMass').value;
+
+            btn.disabled = true;
+            btn.innerText = "Calculating...";
+            status.innerText = "Running physics simulation...";
+
+            const formData = new FormData();
+            formData.append('file', loadedFile);
+            formData.append('handle_x', handlePos.x.toString());
+            formData.append('handle_y', handlePos.y.toString());
+            formData.append('target_mass', targetMass);
+            formData.append('ball_mass', ballMass);
+
+            try {
+                const res = await fetch('/optimize', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!res.ok) throw new Error("Optimization failed");
+
+                const data = await res.json();
+                optimalResult = data;
+
+                updateMarkers(); // Show magenta dot
+
+                // Show results
+                const opt = data.optimized;
+                document.getElementById('res-spin').innerText = opt.max_spin.toFixed(2);
+
+                document.getElementById('res-dist').innerText = opt.dist.toFixed(3);
+                document.getElementById('res-inertia').innerText = opt.inertia.toFixed(4);
+                document.getElementById('res-energy').innerText = opt.E_total.toFixed(2);
+                document.getElementById('res-ratio').innerText = opt.ratio_trans.toFixed(2);
+                document.getElementById('res-vel').innerText = opt.v0.toFixed(2);
+                document.getElementById('res-omega').innerText = opt.omega.toFixed(2);
+
+                document.getElementById('opt-results').classList.remove('hidden');
+
+                status.innerText = "Optimization Complete.";
+                btn.innerText = "Recalculate";
+                btn.disabled = false;
+
+            } catch (e) {
+                console.error(e);
+                status.innerText = "Error: " + e.message;
+                status.classList.add('error');
+                btn.disabled = false;
+            }
+        }
+
+        window.proceedTo3D = () => {
+            switchTab('3d');
+            // Auto generate 3D if not already done? Or just switch.
+            // We can call processImage to be sure.
+            if (contourPoints.length === 0) {
+                processImage();
+            }
+        }
+
         function handleFileSelect(file) {
             loadedFile = file;
-            const dropZone = document.getElementById('drop-zone');
-            // Simplified success state
-            dropZone.innerHTML = `<p style="color:var(--text-color); font-weight:500;">${file.name}</p>`;
-            dropZone.style.borderColor = "var(--primary-color)";
-            dropZone.style.background = "rgba(59, 130, 246, 0.1)";
+            // Show Main App, Hide Upload
+            document.getElementById('step-upload').classList.add('hidden');
+            document.getElementById('main-app').classList.remove('hidden');
+
+            // Default to optimize tab
+            switchTab('optimize');
+
+            // Show preview
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('preview-image').src = e.target.result;
+            }
+            reader.readAsDataURL(file);
         }
 
         window.processImage = async () => {
@@ -547,6 +876,11 @@
                 scene.remove(mesh);
                 mesh.geometry.dispose();
                 mesh.material.dispose();
+                mesh = null;
+            }
+            if (optimalMarker) {
+                scene.remove(optimalMarker);
+                optimalMarker = null;
             }
 
             if (!points || points.length === 0) return;
@@ -594,8 +928,47 @@
                 metalness: 0.1
             });
             mesh = new THREE.Mesh(geometry, material);
-
             scene.add(mesh);
+
+            // --- Add Optimization Marker in 3D ---
+            if (optimalResult && optimalResult.optimized && optimalResult.optimized.ball_pos) {
+                const ballPos = optimalResult.optimized.ball_pos;
+
+                // Radius: 2% of max dimension or fixed 2cm? Let's make it proportional but visible.
+                const r = maxDim * 0.02;
+                const markerGeo = new THREE.SphereGeometry(r, 32, 32);
+                const markerMat = new THREE.MeshBasicMaterial({ color: 0xe879f9 }); // Magenta
+                optimalMarker = new THREE.Mesh(markerGeo, markerMat);
+
+                // Calculate position in Model Space before centering
+                // Note: Y is inverted in shape logic (-y)
+
+                // MAPPING FIX:
+                // contour points are: pixel / 500.0
+                // ballPos is: pixel / width
+                // So ballPos.x * width / 500.0 is equal to contour coord.
+
+                const metaW = optimalResult.meta.width;
+                const metaH = optimalResult.meta.height;
+
+                // In mechanics.py, ball_pos.y is 0 (top) to 1 (bottom)
+                // In generateMesh, shape points are: x, -y.
+                // So Y should be negative.
+
+                const rawX = (ballPos.x * metaW / 500.0) * modelScale;
+                const rawY = -(ballPos.y * metaH / 500.0) * modelScale;
+
+                // Apply the same translation as the mesh
+                // The mesh was translated by -center.
+                // NOTE: `center` was the center of the bounding box of the geometry.
+                optimalMarker.position.set(
+                    rawX - center.x,
+                    rawY - center.y,
+                    thicknessCm // Sit on top (z is 0 to thicknessCm)
+                );
+
+                scene.add(optimalMarker);
+            }
         }
 
         window.exportModel = () => {

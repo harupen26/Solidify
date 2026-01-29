@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -8,7 +8,9 @@ import shutil
 import os
 import tempfile
 from backend.contour_logic import ContourExtractor
+from backend import mechanics
 import json
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -60,6 +62,48 @@ async def process_image(file: UploadFile = File(...)):
              raise HTTPException(status_code=500, detail="Output file not generated")
 
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/optimize")
+async def optimize(
+    file: UploadFile = File(...),
+    handle_x: str = Form("0.5"), 
+    handle_y: str = Form("0.5"),
+    target_mass: str = Form("0.8"),
+    ball_mass: str = Form("0.2")
+):
+    # Parse float coordinates and masses
+    try:
+        hx = float(handle_x)
+        hy = float(handle_y)
+        tm = float(target_mass)
+        bm = float(ball_mass)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Inputs must be numbers")
+
+    print(f"DEBUG_MAIN: hx={hx}, hy={hy}, tm={tm}, bm={bm}")
+
+    try:
+        # Read file into memory for processing
+        contents = await file.read()
+        
+        # Run optimization
+        result = mechanics.run_optimization(
+            contents, 
+            hx, 
+            hy, 
+            target_mass_rifle=tm, 
+            m_ball=bm
+        )
+        
+        if "error" in result:
+             raise HTTPException(status_code=500, detail=result["error"])
+             
+        return JSONResponse(content=result)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
