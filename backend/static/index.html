@@ -34,21 +34,90 @@
             z-index: 100;
             background: var(--panel-bg);
             padding: 24px;
-            border-radius: 12px;
             width: 320px;
+            max-width: 85vw;
+            /* Responsive width */
             backdrop-filter: blur(20px);
             border: 1px solid var(--border-color);
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        #ui-container.minimized {
+            width: auto;
+            min-width: 200px;
+            padding: 16px 20px;
+            overflow: hidden;
+        }
+
+        /* Mobile adjustments */
+        @media (max-width: 480px) {
+            #ui-container {
+                top: 12px;
+                left: 12px;
+                right: 12px;
+                width: auto;
+                max-width: none;
+                padding: 16px;
+            }
+
+            h2 {
+                font-size: 1rem;
+                margin-bottom: 16px;
+            }
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+        }
+
+        #ui-container.minimized .panel-header {
+            margin-bottom: 0;
+            border-bottom: none;
+            padding-bottom: 0;
         }
 
         h2 {
-            margin: 0 0 20px 0;
+            margin: 0;
             font-size: 1.1rem;
             font-weight: 600;
             color: var(--text-color);
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 12px;
             letter-spacing: -0.02em;
+        }
+
+        .toggle-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .toggle-btn:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-color);
+        }
+
+        #ui-content {
+            transition: opacity 0.2s ease;
+        }
+
+        #ui-container.minimized #ui-content {
+            display: none;
         }
 
         /* Drag & Drop */
@@ -223,36 +292,48 @@
 
 <body>
     <div id="ui-container">
-        <h2>Solidify</h2>
-
-        <div id="drop-zone" onclick="document.getElementById('fileInput').click()">
-            <p><strong>Click to upload</strong> or drag and drop</p>
-            <p style="font-size: 0.8rem; margin-top:4px; color:#666;">PNG, JPG supported</p>
-        </div>
-        <input type="file" id="fileInput" accept="image/*">
-
-        <div class="control-group">
-            <label for="scale">Scale <span>x<span id="scale-val">1.0</span></span></label>
-            <input type="range" id="scale" min="0.1" max="5.0" step="0.1" value="1.0">
-        </div>
-
-        <div class="control-group">
-            <label for="thickness">Thickness <span><span id="thickness-val">1.0</span> cm</span></label>
-            <input type="range" id="thickness" min="0.1" max="10.0" step="0.1" value="1.0">
+        <div class="panel-header">
+            <h2>Solidify</h2>
+            <button class="toggle-btn" id="toggleBtn" title="Minimize/Expand">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 14 10 20 16 14"></polyline>
+                    <line x1="12" y1="4" x2="12" y2="20"></line>
+                    <line x1="4" y1="20" x2="20" y2="20"></line>
+                </svg>
+            </button>
         </div>
 
-        <button id="processBtn" class="primary" onclick="processImage()">Generate 3D Model</button>
-        <div id="status" class="status-msg"></div>
+        <div id="ui-content">
+            <div id="drop-zone" onclick="document.getElementById('fileInput').click()">
+                <p><strong>Click to upload</strong> or drag and drop</p>
+                <p style="font-size: 0.8rem; margin-top:4px; color:#666;">PNG, JPG supported</p>
+            </div>
+            <input type="file" id="fileInput" accept="image/*">
 
-        <hr>
+            <div class="control-group">
+                <label for="scale">Scale <span>x<span id="scale-val">1.0</span></span></label>
+                <input type="range" id="scale" min="0.1" max="5.0" step="0.1" value="1.0">
+            </div>
 
-        <div class="control-group">
-            <label>Export Format</label>
-            <select id="exportFormat">
-                <option value="stl">STL (Standard)</option>
-                <option value="obj">OBJ (Wavefront)</option>
-            </select>
-            <button id="downloadBtn" class="secondary" onclick="exportModel()" disabled>Download File</button>
+            <div class="control-group">
+                <label for="thickness">Thickness <span><span id="thickness-val">1.0</span> cm</span></label>
+                <input type="range" id="thickness" min="0.1" max="10.0" step="0.1" value="1.0">
+            </div>
+
+            <button id="processBtn" class="primary" onclick="processImage()">Generate 3D Model</button>
+            <div id="status" class="status-msg"></div>
+
+            <hr>
+
+            <div class="control-group">
+                <label>Export Format</label>
+                <select id="exportFormat">
+                    <option value="stl">STL (Standard)</option>
+                    <option value="obj">OBJ (Wavefront)</option>
+                </select>
+                <button id="downloadBtn" class="secondary" onclick="exportModel()" disabled>Download File</button>
+            </div>
         </div>
     </div>
 
@@ -358,6 +439,18 @@
             const thicknessVal = document.getElementById('thickness-val');
             const scaleInput = document.getElementById('scale');
             const scaleVal = document.getElementById('scale-val');
+            const toggleBtn = document.getElementById('toggleBtn');
+            const uiContainer = document.getElementById('ui-container');
+
+            // Toggle Minimize
+            toggleBtn.addEventListener('click', () => {
+                uiContainer.classList.toggle('minimized');
+                // Change icon based on state
+                const isMinimized = uiContainer.classList.contains('minimized');
+                toggleBtn.innerHTML = isMinimized
+                    ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 12 12 18 8 12"></polyline><line x1="12" y1="6" x2="12" y2="18"></line></svg>` // Down arrow (Expand)
+                    : `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>`; // Minus (Minimize)
+            });
 
             const updateMesh = () => {
                 if (contourPoints.length > 0) generateMesh(contourPoints);
