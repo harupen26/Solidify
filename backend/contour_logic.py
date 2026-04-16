@@ -38,7 +38,8 @@ class ContourExtractor:
             logger.info(f"Image resized to: {new_width} x {new_height}")
             
             # 2. Extract Contour
-            self.extract_contour_custom(resized_img)
+            # self.extract_contour_custom_original(resized_img) # 元のアルゴリズム
+            self.extract_contour_opencv(resized_img) # OpenCV版
             
             # 3. Save to JSON
             self.save_to_json(output_path)
@@ -48,7 +49,48 @@ class ContourExtractor:
             logger.error(f"Error processing image: {e}")
             return False
 
-    def extract_contour_custom(self, img: Image.Image):
+    def extract_contour_opencv(self, img: Image.Image):
+        """
+        OpenCVを使用して輪郭を抽出する高速版。
+        元のextract_contour_custom_originalと同じく外周を辿るアルゴリズム（鈴木のアルゴリズム）を使用します。
+        """
+        import cv2
+        w, h = img.size
+        pixels = np.array(img)
+        
+        detect_dark_object = True
+        threshold_val = 128
+        
+        # グレースケール変換
+        if len(pixels.shape) == 3:
+            gray = cv2.cvtColor(pixels, cv2.COLOR_RGB2GRAY)
+        else:
+            gray = pixels
+            
+        # 2値化マスクの作成
+        if detect_dark_object:
+            _, mask = cv2.threshold(gray, threshold_val, 255, cv2.THRESH_BINARY_INV)
+        else:
+            _, mask = cv2.threshold(gray, threshold_val, 255, cv2.THRESH_BINARY)
+            
+        # 輪郭の検索 (外側の輪郭のみ取得、全ポイントを保存)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        
+        self.contour_points = []
+        if contours:
+            # 最も面積の大きい輪郭を選択
+            largest_contour = max(contours, key=cv2.contourArea)
+            
+            # OpenCVは (N, 1, 2) の形式で座標を返すため PointData のリストに変換
+            for pt in largest_contour:
+                x, y = pt[0]
+                self.contour_points.append(PointData(int(x), int(y)))
+                
+            logger.info(f"OpenCV found contour with {len(self.contour_points)} points")
+        else:
+            logger.error("No contour found by OpenCV!")
+
+    def extract_contour_custom_original(self, img: Image.Image):
         w, h = img.size
         # Convert to numpy array for fast pixel access
         pixels = np.array(img) # Shape (h, w, 3)

@@ -393,8 +393,8 @@
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
             }
         }
     </script>
@@ -890,10 +890,17 @@
             const modelScale = baseScale * userScale;
 
             const shape = new THREE.Shape();
+            
+            // Subsampling for faster 3D Extrusion performance
+            const maxPoints = 500;
+            const step = Math.max(1, Math.floor(points.length / maxPoints));
+            
             shape.moveTo(points[0].x * modelScale, -points[0].y * modelScale);
-            for (let i = 1; i < points.length; i++) {
+            for (let i = 1; i < points.length; i += step) {
                 shape.lineTo(points[i].x * modelScale, -points[i].y * modelScale);
             }
+            // Ensure last point connects
+            shape.lineTo(points[points.length - 1].x * modelScale, -points[points.length - 1].y * modelScale);
             shape.closePath();
 
             const thicknessCm = parseFloat(document.getElementById('thickness').value);
