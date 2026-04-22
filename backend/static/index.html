@@ -514,6 +514,7 @@
         // --- Globals ---
         let scene, camera, renderer, mesh, controls, gridHelper, optimalMarker;
         let contourPoints = [];
+        let holePointsList = [];
         let loadedFile = null;
         let handlePos = { x: 0.5, y: 0.5 }; // normalized
         let optimalResult = null;
@@ -641,7 +642,7 @@
             });
 
             const updateMesh = () => {
-                if (contourPoints.length > 0) generateMesh(contourPoints);
+                if (contourPoints.length > 0) generateMesh(contourPoints, holePointsList);
             };
 
             thicknessInput.addEventListener('input', (e) => {
@@ -720,6 +721,7 @@
         window.resetFlow = () => {
             loadedFile = null;
             contourPoints = [];
+            holePointsList = [];
             optimalResult = null;
             document.getElementById('step-upload').classList.remove('hidden');
             document.getElementById('main-app').classList.add('hidden');
@@ -852,7 +854,8 @@
                 const data = await response.json();
 
                 contourPoints = data.points;
-                generateMesh(contourPoints);
+                holePointsList = data.holes || [];
+                generateMesh(contourPoints, holePointsList);
 
                 statusFn.innerText = ""; // Clear status on success
 
@@ -871,7 +874,7 @@
             }
         };
 
-        function generateMesh(points) {
+        function generateMesh(points, holes = []) {
             if (mesh) {
                 scene.remove(mesh);
                 mesh.geometry.dispose();
@@ -902,6 +905,26 @@
             // Ensure last point connects
             shape.lineTo(points[points.length - 1].x * modelScale, -points[points.length - 1].y * modelScale);
             shape.closePath();
+
+            // Draw holes
+            if (holes && holes.length > 0) {
+                for (let h = 0; h < holes.length; h++) {
+                    const hPoints = holes[h];
+                    if (!hPoints || hPoints.length === 0) continue;
+                    
+                    const hStep = Math.max(1, Math.floor(hPoints.length / maxPoints));
+                    const holePath = new THREE.Path();
+                    
+                    holePath.moveTo(hPoints[0].x * modelScale, -hPoints[0].y * modelScale);
+                    for (let j = 1; j < hPoints.length; j += hStep) {
+                        holePath.lineTo(hPoints[j].x * modelScale, -hPoints[j].y * modelScale);
+                    }
+                    holePath.lineTo(hPoints[hPoints.length - 1].x * modelScale, -hPoints[hPoints.length - 1].y * modelScale);
+                    holePath.closePath();
+                    
+                    shape.holes.push(holePath);
+                }
+            }
 
             const thicknessCm = parseFloat(document.getElementById('thickness').value);
 

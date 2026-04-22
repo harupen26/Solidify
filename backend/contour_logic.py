@@ -19,6 +19,7 @@ class PointData:
 class ContourExtractor:
     def __init__(self):
         self.contour_points: List[PointData] = []
+        self.hole_points_list: List[List[PointData]] = []
         self.step = 10.0
         self.scale_factor = 500.0
 
@@ -73,20 +74,35 @@ class ContourExtractor:
         else:
             _, mask = cv2.threshold(gray, threshold_val, 255, cv2.THRESH_BINARY)
             
-        # 輪郭の検索 (外側の輪郭のみ取得、全ポイントを保存)
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        # 輪郭の検索 (階層構造を含めて取得)
+        contours, hierarchy = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
         
         self.contour_points = []
+        self.hole_points_list = []
         if contours:
-            # 最も面積の大きい輪郭を選択
-            largest_contour = max(contours, key=cv2.contourArea)
+            # 最も面積の大きい輪郭のインデックスを選択（外形）
+            largest_contour_idx = max(range(len(contours)), key=lambda i: cv2.contourArea(contours[i]))
+            largest_contour = contours[largest_contour_idx]
             
             # OpenCVは (N, 1, 2) の形式で座標を返すため PointData のリストに変換
             for pt in largest_contour:
                 x, y = pt[0]
                 self.contour_points.append(PointData(int(x), int(y)))
                 
-            logger.info(f"OpenCV found contour with {len(self.contour_points)} points")
+            # 穴（子輪郭）の検索: 親が largest_contour_idx である輪郭を探す
+            if hierarchy is not None:
+                for i, cnt in enumerate(contours):
+                    parent_idx = hierarchy[0][i][3]
+                    if parent_idx == largest_contour_idx:
+                        # 小さすぎるノイズの穴を除外
+                        if cv2.contourArea(cnt) > 20: 
+                            hole_pts = []
+                            for pt in cnt:
+                                x, y = pt[0]
+                                hole_pts.append(PointData(int(x), int(y)))
+                            self.hole_points_list.append(hole_pts)
+                
+            logger.info(f"OpenCV found main contour with {len(self.contour_points)} points and {len(self.hole_points_list)} holes.")
         else:
             logger.error("No contour found by OpenCV!")
 
@@ -211,29 +227,26 @@ class ContourExtractor:
         if not self.contour_points:
             return
             
+        def sample_points(points):
+            sampled = []
+            limit = len(points)
+            i = 0.0
+            while i < limit:
+                idx = int(i)
+                if idx >= limit:
+                    break
+                p = points[idx]
+                sampled.append({
+                    "x": float(p.x) / self.scale_factor,
+                    "y": float(p.y) / self.scale_factor
+                })
+                i += self.step
+            return sampled
+
         json_data = {}
-        points_array = []
-        
-        # Sampling step
-        # C++: for (int i = 0; i < contourPoints.size(); i += step)
-        # step is float 10.0f
-        
-        limit = len(self.contour_points)
-        i = 0.0
-        while i < limit:
-            idx = int(i)
-            if idx >= limit:
-                break
-                
-            p = self.contour_points[idx]
-            points_array.append({
-                "x": float(p.x) / self.scale_factor,
-                "y": float(p.y) / self.scale_factor
-            })
-            i += self.step
-            
-        json_data["points"] = points_array
+        json_data["points"] = sample_points(self.contour_points)
         json_data["name"] = "SampleData"
+        json_data["holes"] = [sample_points(hole) for hole in self.hole_points_list]
         
         with open(output_path, 'w') as f:
             json.dump(json_data, f, indent=4)
