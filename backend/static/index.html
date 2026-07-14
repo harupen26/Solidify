@@ -308,13 +308,36 @@
         }
 
         .marker-handle {
+            background: transparent;
+            border-radius: 0;
+            width: 14px;
+            height: 14px;
+            box-shadow: none;
+        }
+
+        .marker-handle::before,
+        .marker-handle::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 14px;
+            height: 3px;
             background: #ef4444;
-            border: 2px solid white;
+            border-radius: 1.5px;
+            filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.8));
+        }
+
+        .marker-handle::before {
+            transform: translate(-50%, -50%) rotate(45deg);
+        }
+
+        .marker-handle::after {
+            transform: translate(-50%, -50%) rotate(-45deg);
         }
 
         .marker-optimal {
             background: #e879f9;
-            border: 2px solid white;
         }
 
         .marker-com {
@@ -518,6 +541,182 @@
         let loadedFile = null;
         let handlePos = { x: 0.5, y: 0.5 }; // normalized
         let optimalResult = null;
+        let blockCache = null; // cached dark-pixel coords, extracted once per image
+
+        // --- Client-side physics (faithful port of backend/mechanics.py) ---
+        const TARGET_PIXEL_WIDTH = 1000.0;
+        const REAL_WORLD_WIDTH = 2.0; // meters
+        const SCALE_FACTOR = REAL_WORLD_WIDTH / TARGET_PIXEL_WIDTH;
+
+        function calcTotalEnergy(d) {
+            // Same polynomial as mechanics.calculate_total_energy
+            return 6.96 + d * (-266.0 + d * (3037.0 + d * (-8386.0 + d * 7041.0)));
+        }
+
+        function calcTranslationalRatio(d) {
+            // Same polynomial as mechanics.calculate_translational_ratio
+            return 0.993 + d * (-3.47 + d * (2.45 + d * (29.7 + d * -42.3)));
+        }
+
+        // Port of mechanics.generate_blocks_from_image: resize to width 1000,
+        // collect pixels with brightness < 100, row-major scan (y outer, x inner)
+        // to match np.where ordering so the [::5] candidate sampling stays aligned.
+        async function extractBlocks() {
+            const bitmap = await createImageBitmap(loadedFile);
+            const ratio = bitmap.height / bitmap.width;
+            const newW = Math.trunc(TARGET_PIXEL_WIDTH);
+            const newH = Math.trunc(TARGET_PIXEL_WIDTH * ratio);
+
+            const canvas = document.createElement('canvas');
+            canvas.width = newW;
+            canvas.height = newH;
+            const ctx = canvas.getContext('2d', { willReadFrequently: true });
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(bitmap, 0, 0, newW, newH);
+            bitmap.close();
+
+            const data = ctx.getImageData(0, 0, newW, newH).data;
+            const xsArr = [];
+            const ysArr = [];
+            const threshold = 100;
+            for (let y = 0; y < newH; y++) {
+                const rowBase = y * newW * 4;
+                for (let x = 0; x < newW; x++) {
+                    const idx = rowBase + x * 4;
+                    const brightness = (data[idx] + data[idx + 1] + data[idx + 2]) / 3.0;
+                    if (brightness < threshold) {
+                        xsArr.push(x * SCALE_FACTOR);
+                        ysArr.push((newH - y) * SCALE_FACTOR);
+                    }
+                }
+            }
+
+            blockCache = {
+                xs: Float64Array.from(xsArr),
+                ys: Float64Array.from(ysArr),
+                width: newW,
+                height: newH
+            };
+        }
+
+        // Port of mechanics.run_optimization — identical formulas, constants and
+        // candidate sampling; only the execution environment differs.
+        function computeOptimization(targetMassRifle, mBall) {
+            const { xs, ys, width, height } = blockCache;
+            const n = xs.length;
+            if (n === 0) throw new Error("No blocks generated");
+
+            const massPerPixel = targetMassRifle / n;
+            const pxX = handlePos.x * width;
+            const pxY = handlePos.y * height;
+            const handleX = pxX * SCALE_FACTOR;
+            const handleY = (height - pxY) * SCALE_FACTOR;
+
+            let mRifle = 0.0, sumMx = 0.0, sumMy = 0.0;
+            for (let i = 0; i < n; i++) {
+                mRifle += massPerPixel;
+                sumMx += xs[i] * massPerPixel;
+                sumMy += ys[i] * massPerPixel;
+            }
+            if (mRifle === 0) throw new Error("Rifle mass is zero");
+            const gX = sumMx / mRifle;
+            const gY = sumMy / mRifle;
+
+            let I_rifle_G = 0.0;
+            for (let i = 0; i < n; i++) {
+                const dx = xs[i] - gX;
+                const dy = ys[i] - gY;
+                I_rifle_G += massPerPixel * (dx * dx + dy * dy);
+            }
+
+            const r_ball = 0.03;
+            const I_ball_G = 0.4 * mBall * (r_ball * r_ball);
+            const mComposite = mRifle + mBall;
+
+            // 1. Original analysis (rifle only, scaled)
+            const scaleRatio = mRifle > 0 ? (mRifle + mBall) / mRifle : 1.0;
+            const mRifleOriginal = mRifle * scaleRatio;
+            const IRifleOriginal = I_rifle_G * scaleRatio;
+
+            const originalD = Math.sqrt((handleX - gX) ** 2 + (handleY - gY) ** 2);
+            const originalETotal = calcTotalEnergy(originalD);
+            const originalRatioTrans = calcTranslationalRatio(originalD);
+            const ETransOrig = originalETotal * originalRatioTrans;
+            const ERotOrig = originalETotal - ETransOrig;
+
+            const origV0 = mRifleOriginal > 0 ? Math.sqrt(2.0 * Math.max(0.0, ETransOrig) / mRifleOriginal) : 0.0;
+            const origT = 2.0 * origV0 / 9.81;
+            const origOmega = IRifleOriginal > 0 ? Math.sqrt(2.0 * Math.max(0.0, ERotOrig) / IRifleOriginal) : 0.0;
+            const originalSpin = origOmega * origT / (2.0 * Math.PI);
+
+            // 2. Optimization (full search, every 5th block like blocks_np[::5])
+            const step = 5;
+            let maxSpin = -Infinity;
+            let optimalStats = null;
+
+            for (let i = 0; i < n; i += step) {
+                const bx = xs[i];
+                const by = ys[i];
+
+                const compX = (mRifle * gX + mBall * bx) / mComposite;
+                const compY = (mRifle * gY + mBall * by) / mComposite;
+
+                const dRifleSq = (gX - compX) ** 2 + (gY - compY) ** 2;
+                const dBallSq = (bx - compX) ** 2 + (by - compY) ** 2;
+                const IStar = (I_rifle_G + mRifle * dRifleSq) + (I_ball_G + mBall * dBallSq);
+
+                const d = Math.sqrt((handleX - compX) ** 2 + (handleY - compY) ** 2);
+                const ETotal = calcTotalEnergy(d);
+                const ratioTrans = calcTranslationalRatio(d);
+                const ETrans = ETotal * ratioTrans;
+                const ERot = ETotal - ETrans;
+
+                const v0 = Math.sqrt(2.0 * Math.max(0.0, ETrans) / mComposite);
+                const t = 2.0 * v0 / 9.81;
+                const w = IStar > 0 ? Math.sqrt(2.0 * Math.max(0.0, ERot) / IStar) : 0.0;
+                const spin = w * t / (2.0 * Math.PI);
+
+                if (spin > maxSpin) {
+                    maxSpin = spin;
+                    const ballPxX = bx / SCALE_FACTOR;
+                    const ballPxY = height - (by / SCALE_FACTOR);
+                    const compPxX = compX / SCALE_FACTOR;
+                    const compPxY = height - (compY / SCALE_FACTOR);
+                    optimalStats = {
+                        max_spin: maxSpin,
+                        ball_pos: { x: ballPxX / width, y: ballPxY / height },
+                        com_pos: { x: compPxX / width, y: compPxY / height },
+                        v0: v0,
+                        omega: w,
+                        E_total: ETotal,
+                        ratio_trans: ratioTrans,
+                        inertia: IStar,
+                        dist: d
+                    };
+                }
+            }
+
+            const riflePxX = gX / SCALE_FACTOR;
+            const riflePxY = height - (gY / SCALE_FACTOR);
+
+            return {
+                original: {
+                    spin: originalSpin,
+                    v0: origV0,
+                    omega: origOmega,
+                    E_total: originalETotal,
+                    dist: originalD,
+                    com_pos: { x: riflePxX / width, y: riflePxY / height }
+                },
+                optimized: optimalStats,
+                meta: {
+                    width: width,
+                    height: height,
+                    real_width: REAL_WORLD_WIDTH
+                }
+            };
+        }
 
         function init() {
             const container = document.getElementById('canvas-container');
@@ -723,6 +922,7 @@
             contourPoints = [];
             holePointsList = [];
             optimalResult = null;
+            blockCache = null;
             document.getElementById('step-upload').classList.remove('hidden');
             document.getElementById('main-app').classList.add('hidden');
             document.getElementById('drop-zone').innerHTML = `<p><strong>Click to upload</strong> or drag and drop</p><p style="font-size: 0.8rem; margin-top:4px; color:#666;">PNG, JPG supported</p>`;
@@ -744,33 +944,53 @@
             }
         };
 
+        // Legacy server-side calculation, kept as a fallback only.
+        async function runOptimizationOnServer(targetMass, ballMass) {
+            const formData = new FormData();
+            formData.append('file', loadedFile);
+            formData.append('handle_x', handlePos.x.toString());
+            formData.append('handle_y', handlePos.y.toString());
+            formData.append('target_mass', targetMass.toString());
+            formData.append('ball_mass', ballMass.toString());
+
+            const res = await fetch('/optimize', {
+                method: 'POST',
+                body: formData
+            });
+            if (!res.ok) throw new Error("Optimization failed");
+            return await res.json();
+        }
+
         window.runOptimization = async () => {
             const btn = document.getElementById('calcBtn');
             const status = document.getElementById('status');
 
             // Get Mass Inputs
-            const targetMass = document.getElementById('targetMass').value;
-            const ballMass = document.getElementById('ballMass').value;
+            const targetMass = parseFloat(document.getElementById('targetMass').value);
+            const ballMass = parseFloat(document.getElementById('ballMass').value);
 
             btn.disabled = true;
             btn.innerText = "Calculating...";
             status.innerText = "Running physics simulation...";
-
-            const formData = new FormData();
-            formData.append('file', loadedFile);
-            formData.append('handle_x', handlePos.x.toString());
-            formData.append('handle_y', handlePos.y.toString());
-            formData.append('target_mass', targetMass);
-            formData.append('ball_mass', ballMass);
+            status.classList.remove('error');
 
             try {
-                const res = await fetch('/optimize', {
-                    method: 'POST',
-                    body: formData
-                });
-                if (!res.ok) throw new Error("Optimization failed");
+                if (!Number.isFinite(targetMass) || !Number.isFinite(ballMass)) {
+                    throw new Error("Inputs must be numbers");
+                }
 
-                const data = await res.json();
+                let data;
+                const t0 = performance.now();
+                try {
+                    // In-browser calculation: pixel scan is cached per image,
+                    // so recalculation is near-instant.
+                    if (!blockCache) await extractBlocks();
+                    data = computeOptimization(targetMass, ballMass);
+                    console.log(`Optimization computed in-browser in ${(performance.now() - t0).toFixed(1)} ms`);
+                } catch (localErr) {
+                    console.warn("Local calculation failed, falling back to server:", localErr);
+                    data = await runOptimizationOnServer(targetMass, ballMass);
+                }
                 optimalResult = data;
 
                 updateMarkers(); // Show magenta dot
@@ -811,6 +1031,8 @@
 
         function handleFileSelect(file) {
             loadedFile = file;
+            blockCache = null;
+            optimalResult = null;
             // Show Main App, Hide Upload
             document.getElementById('step-upload').classList.add('hidden');
             document.getElementById('main-app').classList.remove('hidden');
